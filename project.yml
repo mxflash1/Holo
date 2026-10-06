@@ -33,9 +33,9 @@ targets:
     info:
       path: Config/Holo-Info.plist
       properties:
-        CFBundleDisplayName: Holo
+        CFBundleDisplayName: Holo Left Right
         CFBundleIconFile: AppIcon
-        CFBundleName: Holo
+        CFBundleName: Holo Left Right
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.utilities
@@ -54,7 +54,7 @@ targets:
       - target: HoloCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.holo.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.holo.leftright
         PRODUCT_NAME: Holo
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: Apple Development

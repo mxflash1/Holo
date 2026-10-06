@@ -1,33 +1,21 @@
 import Foundation
 
 public enum DeskZone: Int, CaseIterable, Codable, Hashable, Sendable, Identifiable {
-    case leftTop = 0
-    case leftBottom
-    case rightTop
-    case rightBottom
+    case left = 0
+    case right
 
     public var id: Int { rawValue }
-    public var verticalIndex: Int { rawValue % 2 }
-    public var row: Int { verticalIndex }
-    public var column: Int { rawValue < 2 ? 0 : 1 }
-    public var isLeft: Bool { rawValue < 2 }
-
-    public var positionName: String {
-        verticalIndex == 0 ? "Rear" : "Front"
-    }
-
-    public var shortName: String {
-        ["LR", "LF", "RR", "RF"][rawValue]
-    }
-
-    public var displayName: String {
-        ["Left Rear", "Left Front", "Right Rear", "Right Front"][rawValue]
-    }
-
+    public var verticalIndex: Int { 0 }
+    public var row: Int { 0 }
+    public var column: Int { rawValue }
+    public var isLeft: Bool { self == .left }
+    public var positionName: String { displayName }
+    public var shortName: String { isLeft ? "L" : "R" }
+    public var displayName: String { isLeft ? "Left" : "Right" }
     public var instruction: String {
-        let edge = verticalIndex == 0 ? "display" : "trackpad"
-        return "Tap beside the MacBook on the \(isLeft ? "left" : "right"), near the \(edge) edge"
+        "Tap beside the MacBook on the \(isLeft ? "left" : "right"). Spread taps across that side."
     }
+
 }
 
 public enum SensingStrategy: String, CaseIterable, Codable, Sendable, Identifiable {

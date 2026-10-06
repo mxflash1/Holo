@@ -2,7 +2,7 @@ import XCTest
 @testable import HoloCore
 
 final class EvaluationTests: XCTestCase {
-    func testBalancedSixtyTapReportAndConfusionMatrix() {
+    func testBalancedThirtyTapReportAndConfusionMatrix() {
         var records: [EvaluationRecord] = []
         for zone in DeskZone.allCases {
             for index in 0..<EvaluationAcceptance.tapsPerZone {
@@ -35,8 +35,8 @@ final class EvaluationTests: XCTestCase {
         XCTAssertTrue(report.meetsAccuracyAndLatencyTargets)
         XCTAssertEqual(report.confusionMatrix.count, DeskZone.allCases.count)
         XCTAssertEqual(report.confusionMatrix[0][0], 12)
-        XCTAssertEqual(report.perZoneAccuracy[DeskZone.rightTop.rawValue].accuracy, 0.8, accuracy: 0.0001)
-        XCTAssertEqual(report.csv().split(separator: "\n").count, 61)
+        XCTAssertEqual(report.perZoneAccuracy[DeskZone.right.rawValue].accuracy, 0.8, accuracy: 0.0001)
+        XCTAssertEqual(report.csv().split(separator: "\n").count, 31)
     }
 
     func testRejectedTapsCountAsIncorrect() {
@@ -47,15 +47,15 @@ final class EvaluationTests: XCTestCase {
             zoneDistances: [],
             rejectionReason: .ambiguousZone
         )
-        let record = EvaluationRecord(expectedZone: .leftBottom, decision: decision, responseLatencyMilliseconds: 90)
+        let record = EvaluationRecord(expectedZone: .right, decision: decision, responseLatencyMilliseconds: 90)
         let report = EvaluationReport(profileName: "Test", strategy: .passive, startedAt: Date(), records: [record])
         XCTAssertEqual(report.overallAccuracy, 0)
-        XCTAssertEqual(report.rejectedPerZone[DeskZone.leftBottom.rawValue], 1)
+        XCTAssertEqual(report.rejectedPerZone[DeskZone.right.rawValue], 1)
     }
 
     func testAcceptanceTargetsAreReportedSeparatelyAndLatencyIsStrict() {
         let correct = ClassificationDecision(
-            zone: .leftTop,
+            zone: .left,
             confidence: 0.9,
             signalStrength: 0.8,
             zoneDistances: [],
@@ -66,7 +66,7 @@ final class EvaluationTests: XCTestCase {
             strategy: .passive,
             startedAt: Date(),
             records: [EvaluationRecord(
-                expectedZone: .leftTop,
+                expectedZone: .left,
                 decision: correct,
                 responseLatencyMilliseconds: EvaluationAcceptance.maximumMedianResponseMilliseconds
             )]
@@ -87,7 +87,7 @@ final class EvaluationTests: XCTestCase {
             strategy: .passive,
             startedAt: Date(),
             records: [EvaluationRecord(
-                expectedZone: .leftTop,
+                expectedZone: .left,
                 decision: correct,
                 responseLatencyMilliseconds: AudioTimeline.invalidElapsedMilliseconds
             )]
@@ -146,7 +146,7 @@ final class EvaluationTests: XCTestCase {
                     case .active:
                         position = 0
                     case .hybrid:
-                        position = zone.isLeft ? 0 : 2
+                        position = 0
                     }
                     let feature = TapFeatureVector(
                         strategy: strategy,

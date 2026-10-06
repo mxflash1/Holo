@@ -2,17 +2,28 @@ import XCTest
 @testable import HoloCore
 
 final class PersistenceTests: XCTestCase {
+    func testFourZoneProfileIsSkippedWithoutRewritingItsData() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try ProfileStore(directory: directory)
+        let original = Data(#"{"version":3,"zones":[{"zone":0},{"zone":1},{"zone":2},{"zone":3}]}"#.utf8)
+        let url = directory.appendingPathComponent("old-desk.json")
+        try original.write(to: url)
+        XCTAssertTrue(try store.loadAll().isEmpty)
+        XCTAssertEqual(try Data(contentsOf: url), original)
+    }
+
     func testProfileRoundTripDoesNotStoreAudio() throws {
         let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: temporary) }
         let store = try ProfileStore(directory: temporary)
         let classifier = try TrainedTapClassifier.train(positiveExamples: samples())
         var zones = DeskZone.allCases.map { ZoneConfiguration(zone: $0) }
-        zones[DeskZone.leftTop.rawValue].action = ZoneActionConfiguration(
+        zones[DeskZone.left.rawValue].action = ZoneActionConfiguration(
             kind: .copyText,
             text: "Focus mode"
         )
-        zones[DeskZone.rightBottom.rawValue].action = ZoneActionConfiguration(
+        zones[DeskZone.right.rawValue].action = ZoneActionConfiguration(
             kind: .openApplication,
             text: "Notes",
             bookmarkData: Data([0x48, 0x4F, 0x4C, 0x4F])
@@ -34,10 +45,10 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(loaded.id, profile.id)
         XCTAssertEqual(loaded.name, "Oak desk")
         XCTAssertEqual(loaded.zones.map(\.zone), DeskZone.allCases)
-        XCTAssertEqual(loaded.action(for: .leftTop).kind, .copyText)
-        XCTAssertEqual(loaded.action(for: .leftTop).text, "Focus mode")
-        XCTAssertEqual(loaded.action(for: .rightBottom).kind, .openApplication)
-        XCTAssertEqual(loaded.action(for: .rightBottom).bookmarkData, Data([0x48, 0x4F, 0x4C, 0x4F]))
+        XCTAssertEqual(loaded.action(for: .left).kind, .copyText)
+        XCTAssertEqual(loaded.action(for: .left).text, "Focus mode")
+        XCTAssertEqual(loaded.action(for: .right).kind, .openApplication)
+        XCTAssertEqual(loaded.action(for: .right).bookmarkData, Data([0x48, 0x4F, 0x4C, 0x4F]))
 
         let files = try FileManager.default.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)
         XCTAssertEqual(files.count, 1)
@@ -138,7 +149,7 @@ final class PersistenceTests: XCTestCase {
                 leaveOneOutAccuracy: 1
             )
         )
-        profile.classifier.positiveExamples.removeAll { $0.zone == .rightBottom }
+        profile.classifier.positiveExamples.removeAll { $0.zone == .right }
         try store.save(profile)
 
         XCTAssertThrowsError(try store.loadAll()) { error in
@@ -192,7 +203,7 @@ final class PersistenceTests: XCTestCase {
         let profileID = UUID()
         let timestamp = Date(timeIntervalSince1970: 1_700_000_000)
         let decision = ClassificationDecision(
-            zone: .rightBottom,
+            zone: .right,
             confidence: 0.88,
             signalStrength: 0.72,
             zoneDistances: [],
@@ -205,7 +216,7 @@ final class PersistenceTests: XCTestCase {
             startedAt: timestamp.addingTimeInterval(-10),
             completedAt: timestamp,
             records: [EvaluationRecord(
-                expectedZone: .rightBottom,
+                expectedZone: .right,
                 decision: decision,
                 responseLatencyMilliseconds: 123,
                 capturedAt: timestamp
@@ -223,7 +234,7 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(loaded.profileName, "Oak")
         XCTAssertEqual(loaded.topologyZoneCount, DeskZone.allCases.count)
         XCTAssertEqual(loaded.records.count, 1)
-        XCTAssertEqual(loaded.records.first?.predictedZone, .rightBottom)
+        XCTAssertEqual(loaded.records.first?.predictedZone, .right)
         XCTAssertEqual(loaded.records.first?.responseLatencyMilliseconds, 123)
     }
 
@@ -273,6 +284,66 @@ final class PersistenceTests: XCTestCase {
         try store.save(current)
         XCTAssertEqual(try store.load()?.topologyZoneCount, DeskZone.allCases.count)
         XCTAssertEqual(try store.load()?.profileID, profileID)
+    }
+
+    func testSharedRejectionMigrationDeduplicatesAndSurvivesDeskDeletion() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let profiles = try ProfileStore(directory: directory.appendingPathComponent("Profiles"))
+        let positives = samples()
+        var typing = LabeledTap(zone: nil, negativeLabel: "Typing", feature: positives[0].feature)
+        typing.feature.capturedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let classifier = try TrainedTapClassifier.train(positiveExamples: positives, negativeExamples: [typing])
+        let first = HoloProfile(name: "Home", surfaceDescription: "Wood", laptopPositionNote: "Center",
+            classifier: classifier, calibration: CalibrationSummary(sampleCount: positives.count,
+                samplesPerZone: [2, 2], leaveOneOutAccuracy: nil))
+        var second = first
+        second.id = UUID()
+        second.name = "School"
+        try profiles.save(first)
+        try profiles.save(second)
+        let shared = SharedRejectionStore(fileURL: directory.appendingPathComponent("shared.json"))
+        let migrated = try shared.loadOrMigrate(profiles: profiles.loadAll())
+        XCTAssertEqual(migrated.samples.map(\.id), [typing.id])
+        try profiles.delete(first)
+        try profiles.delete(second)
+        XCTAssertEqual(try shared.loadOrMigrate(profiles: []).samples, [typing])
+        let trained = try TrainedTapClassifier.train(positiveExamples: positives,
+            negativeExamples: migrated.compatible(with: positives[0].feature))
+        XCTAssertEqual(trained.positiveExamples, positives)
+        XCTAssertEqual(trained.negativeExamples, [typing])
+    }
+
+    func testClearedSharedSoundsStayClearedAndOtherStrategiesArePreserved() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let feature = samples()[0].feature
+        let typing = LabeledTap(zone: nil, negativeLabel: "Typing", feature: feature)
+        var active = typing
+        active.id = UUID()
+        active.feature.strategy = .active
+        var otherSchema = typing
+        otherSchema.id = UUID()
+        otherSchema.feature.names = ["other-x", "other-y"]
+        var library = SharedRejectionLibrary(samples: [typing, active, otherSchema])
+        XCTAssertEqual(library.compatible(with: feature), [typing])
+        library.replaceCompatible(with: feature, samples: [])
+        XCTAssertTrue(library.compatible(with: feature).isEmpty)
+        XCTAssertEqual(Set(library.samples.map(\.id)), Set([active.id, otherSchema.id]))
+        let store = SharedRejectionStore(fileURL: directory.appendingPathComponent("shared.json"))
+        try store.save(library)
+        let positives = samples()
+        let old = HoloProfile(name: "Old snapshot", surfaceDescription: "Wood", laptopPositionNote: "Center",
+            classifier: try TrainedTapClassifier.train(positiveExamples: positives, negativeExamples: [typing]),
+            calibration: CalibrationSummary(sampleCount: positives.count, samplesPerZone: [2, 2], leaveOneOutAccuracy: nil))
+        XCTAssertTrue(try store.loadOrMigrate(profiles: [old]).compatible(with: feature).isEmpty)
+    }
+
+    func testSharedSoundsExcludeDeskTapsAndMalformedFeatures() {
+        let positive = samples()[0]
+        var invalid = LabeledTap(zone: nil, negativeLabel: "Typing", feature: positive.feature)
+        invalid.feature.values = [.nan, 0]
+        XCTAssertTrue(SharedRejectionLibrary(samples: [positive, invalid]).samples.isEmpty)
     }
 
     private func samples() -> [LabeledTap] {

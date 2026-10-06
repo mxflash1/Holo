@@ -96,7 +96,7 @@ public enum ReplayError: Error, LocalizedError, Equatable {
         case .unsupportedProfileVersion(let version):
             return "profile version \(version) is unsupported; expected \(HoloProfile.currentVersion)"
         case .invalidProfileTopology:
-            return "profile does not contain exactly the four supported zones"
+            return "profile does not contain exactly the two supported zones"
         case .invalidEvaluationTopology(let count):
             return "evaluation topology is \(count.map(String.init) ?? "missing"); expected \(DeskZone.allCases.count) zones"
         case .profileMismatch(let expected, let actual):

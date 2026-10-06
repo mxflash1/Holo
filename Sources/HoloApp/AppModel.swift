@@ -55,7 +55,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var benchmarkSession: BenchmarkSession?
     @Published private(set) var approachComparison: ApproachComparison?
     @Published private(set) var diagnosticCaptures: [DiagnosticCaptureRecord] = []
-    @Published var diagnosticLabel: DiagnosticLabel = .zone(.leftTop)
+    @Published var diagnosticLabel: DiagnosticLabel = .zone(.left)
     @Published var diagnosticCaptureArmed = false
     @Published private(set) var guidedCaptureIssue: GuidedCaptureQualityIssue?
     @Published var debugRecordingEnabled = false
@@ -64,8 +64,11 @@ final class AppModel: ObservableObject {
 
     let audio = AudioCaptureService()
     @Published var calibrationDraft = CalibrationDraft()
+    @Published private(set) var isCreatingProfile = false
 
     private let profileStore: ProfileStore?
+    private var sharedRejectionStore: SharedRejectionStore?
+    private var sharedRejections = SharedRejectionLibrary()
     private let evaluationStore: EvaluationStore?
     private let comparisonStore: ApproachComparisonStore?
     private let debugStore: DebugRecordingStore?
@@ -78,7 +81,9 @@ final class AppModel: ObservableObject {
     private var evaluationArmTask: Task<Void, Never>?
     private var benchmarkArmTask: Task<Void, Never>?
     private var activeZoneClearTask: Task<Void, Never>?
-    private var pausedByUser = false
+    private var pausedByUser = true
+    private var didActivateOnLaunch = false
+    @Published private(set) var isStartingListening = false
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
@@ -111,6 +116,17 @@ final class AppModel: ObservableObject {
         if let profileStore {
             do { profiles = try profileStore.loadAll() }
             catch { startupErrors.append("Profiles: \(error.localizedDescription)") }
+        }
+        if let profileStore {
+            let store = SharedRejectionStore(fileURL: profileStore.directory.deletingLastPathComponent()
+                .appendingPathComponent("shared-rejection-examples.json"))
+            do {
+                sharedRejections = try store.loadOrMigrate(profiles: profiles)
+                sharedRejectionStore = store
+                applySharedRejections()
+            } catch {
+                startupErrors.append("Shared rejection examples: \(error.localizedDescription)")
+            }
         }
         selectedProfileID = profiles.first?.id
         if let evaluationStore {
@@ -181,6 +197,9 @@ final class AppModel: ObservableObject {
     }
 
     func activate() async {
+        guard !isStartingListening else { return }
+        isStartingListening = true
+        defer { isStartingListening = false }
         do {
             try await audio.start(strategy: targetStrategy)
             if let zone = calibrationSession?.currentZone {
@@ -203,31 +222,37 @@ final class AppModel: ObservableObject {
     }
 
     func activateOnLaunch() async {
-        guard selectedProfile != nil else {
-            section = .calibrate
-            statusMessage = "Setup required • calibrate the four desk zones"
-            return
+        guard !didActivateOnLaunch else { return }
+        didActivateOnLaunch = true
+        if selectedProfile == nil {
+            openSetup()
+        } else {
+            statusMessage = "Paused • Command–H to listen"
         }
+    }
 
-        switch audio.authorizationState {
-        case .authorized:
-            await activate()
-        case .notDetermined:
-            statusMessage = selectedProfile == nil
-                ? "Microphone access will be requested when calibration begins"
-                : "Press Resume to enable microphone access"
-        case .unavailable:
-            statusMessage = "Microphone access is off"
+    func pauseListening() {
+        pausedByUser = true
+        disarmAllCaptureIntents()
+        audio.stop()
+        statusMessage = "Paused • microphone off"
+        activeZone = nil
+    }
+
+    func toggleBackgroundListening() {
+        if audio.isListening || isStartingListening {
+            pauseListening()
+        } else if guidedSection == nil && selectedProfile != nil {
+            section = .live
+            togglePause()
+        } else if guidedSection == nil {
+            openSetup()
         }
     }
 
     func togglePause() {
-        if audio.isListening {
-            pausedByUser = true
-            disarmAllCaptureIntents()
-            audio.stop()
-            statusMessage = "Paused"
-            activeZone = nil
+        if audio.isListening || isStartingListening {
+            pauseListening()
         } else if selectedProfile == nil && guidedSection == nil {
             openSetup()
         } else {
@@ -239,11 +264,12 @@ final class AppModel: ObservableObject {
     func openSetup() {
         guard guidedSection == nil else { return }
         section = .calibrate
-        statusMessage = "Setup required • calibrate the four desk zones"
+        statusMessage = "Setup required • calibrate the two desk zones"
     }
 
     func selectProfile(_ id: UUID?) {
         guard guidedSection == nil else { return }
+        isCreatingProfile = false
         selectedProfileID = id
         activeZoneClearTask?.cancel()
         activeZone = nil
@@ -258,21 +284,49 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func applySharedRejections() {
+        for index in profiles.indices {
+            guard let feature = profiles[index].classifier.positiveExamples.first?.feature else { continue }
+            profiles[index].classifier.negativeExamples = sharedRejections.compatible(with: feature)
+        }
+    }
+
+    func prepareNewProfile() {
+        guard guidedSection == nil else { return }
+        pauseListening()
+        isCreatingProfile = true
+        calibrationDraft = CalibrationDraft(name: "", surfaceDescription: "", laptopPositionNote: "")
+        section = .calibrate
+        statusMessage = "New desk • name it before starting calibration"
+    }
+
+    func cancelNewProfile() {
+        guard guidedSection == nil else { return }
+        isCreatingProfile = false
+        calibrationDraft = selectedProfile.map { draft(for: $0) } ?? CalibrationDraft()
+        statusMessage = "New desk cancelled • existing profile unchanged"
+    }
+
     func beginCalibration(draft: CalibrationDraft, recalibrating: HoloProfile? = nil) {
+        guard !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         pausedByUser = false
         calibrationArmTask?.cancel()
         evaluationArmTask?.cancel()
         benchmarkArmTask?.cancel()
         calibrationDraft = draft
-        recalibratingProfileID = recalibrating?.id
+        recalibratingProfileID = isCreatingProfile ? nil : recalibrating?.id
         calibrationSession = CalibrationSession(draft: draft)
+        calibrationSession?.negativeSamples = (sharedRejectionStore != nil
+            ? sharedRejections.samples
+            : SharedRejectionLibrary(samples: profiles.flatMap { $0.classifier.negativeExamples }).samples)
+            .filter { $0.feature.strategy == draft.strategy }
         calibrationValidation = nil
         guidedCaptureIssue = nil
         calibrationAcceptAfter = Date().addingTimeInterval(0.5)
         evaluationSession = nil
         benchmarkSession = nil
         section = .calibrate
-        statusMessage = "Calibration • \(DeskZone.leftTop.displayName)"
+        statusMessage = "Calibration • \(DeskZone.left.displayName)"
         Task {
             do {
                 try await prepareGuidedAudio(to: draft.strategy)
@@ -288,6 +342,7 @@ final class AppModel: ObservableObject {
 
     func prepareRecalibration() {
         guard guidedSection == nil else { return }
+        isCreatingProfile = false
         if let profile = selectedProfile {
             calibrationDraft = draft(for: profile)
         }
@@ -415,9 +470,11 @@ final class AppModel: ObservableObject {
     func finishCalibration(openActions: Bool = false) {
         guard let session = calibrationSession, session.zonesComplete else { return }
         do {
+            guard let feature = session.positiveSamples.first?.feature else { return }
+            let negatives = SharedRejectionLibrary(samples: session.negativeSamples).compatible(with: feature)
             let classifier = try TrainedTapClassifier.train(
                 positiveExamples: session.positiveSamples,
-                negativeExamples: session.negativeSamples
+                negativeExamples: negatives
             )
             let crossValidation = try calibrationValidation
                 ?? ClassifierEvaluator.leaveOneOut(session.positiveSamples)
@@ -445,6 +502,20 @@ final class AppModel: ObservableObject {
             } else {
                 profiles.insert(profile, at: 0)
             }
+            if let sharedRejectionStore {
+                var updated = sharedRejections
+                updated.replaceCompatible(with: feature, samples: negatives)
+                do {
+                    try sharedRejectionStore.save(updated)
+                    sharedRejections = updated
+                    applySharedRejections()
+                } catch {
+                    errorMessage = "Desk calibration saved, but shared sounds could not be updated: \(error.localizedDescription)"
+                }
+            } else {
+                errorMessage = "Desk calibration saved. Shared sound storage is unavailable, so these examples are only saved with this desk."
+            }
+            isCreatingProfile = false
             selectedProfileID = profile.id
             calibrationArmTask?.cancel()
             calibrationSession = nil
@@ -778,6 +849,10 @@ final class AppModel: ObservableObject {
                 return
             }
             guidedCaptureIssue = nil
+            if session.positiveSamples.isEmpty {
+                session.negativeSamples = SharedRejectionLibrary(samples: session.negativeSamples)
+                    .compatible(with: observation.feature)
+            }
             session.positiveSamples.append(LabeledTap(zone: zone, feature: observation.feature))
             let count = session.count(for: zone)
             calibrationAcceptAfter = Date().addingTimeInterval(0.40)
@@ -795,7 +870,7 @@ final class AppModel: ObservableObject {
                 session.isSettling = false
                 do {
                     calibrationValidation = try ClassifierEvaluator.leaveOneOut(session.positiveSamples)
-                    statusMessage = "All four zones captured • save or add rejection examples"
+                    statusMessage = "Both zones captured • save or add rejection examples"
                 } catch {
                     calibrationValidation = nil
                     statusMessage = "Calibration review unavailable"

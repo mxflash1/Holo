@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import CoreAudio
 import Foundation
 import HoloCore
 
@@ -73,6 +74,7 @@ final class AudioCaptureService: ObservableObject {
     nonisolated(unsafe) private var inputLatencySeconds = 0.0
     nonisolated(unsafe) private var callbackCounter = 0
     private var captureGeneration: UInt64 = 0
+    private var recoveryGeneration: UInt64?
     private let bufferFrames: AVAudioFrameCount = 512
     // Authorization is process-wide, not tied to one capture-service object.
     // Keeping both the in-flight request and its decision static guarantees
@@ -121,8 +123,10 @@ final class AudioCaptureService: ObservableObject {
         stopCapture()
 
         let route: AudioRouteInfo
+        let microphone: AudioDeviceID
         do {
-            route = try SystemAudioRouteInspector.currentRoute()
+            microphone = try SystemAudioRouteInspector.builtInMicrophone()
+            route = try SystemAudioRouteInspector.currentRoute(inputDeviceID: microphone)
         } catch {
             let captureError = AudioCaptureError.audioRouteUnavailable(error.localizedDescription)
             lastError = captureError.localizedDescription
@@ -144,6 +148,8 @@ final class AudioCaptureService: ObservableObject {
 
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        guard let inputUnit = input.audioUnit else { throw AudioCaptureError.noInputChannels }
+        try SystemAudioRouteInspector.bindInput(inputUnit, to: microphone)
         let format = input.outputFormat(forBus: 0)
         guard format.channelCount > 0 else { throw AudioCaptureError.noInputChannels }
         guard format.sampleRate > 0, format.commonFormat == .pcmFormatFloat32 else {
@@ -222,6 +228,7 @@ final class AudioCaptureService: ObservableObject {
     }
 
     func stop() {
+        recoveryGeneration = nil
         pendingStart?.task.cancel()
         pendingStart = nil
         stopCapture()
@@ -302,7 +309,8 @@ final class AudioCaptureService: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.handleConfigurationChange()
+                guard let self, self.engine === engine else { return }
+                self.handleConfigurationChange()
             }
         }
     }
@@ -310,15 +318,35 @@ final class AudioCaptureService: ObservableObject {
     private func handleConfigurationChange() {
         guard isListening else { return }
         do {
-            let route = try SystemAudioRouteInspector.currentRoute()
+            guard let engine, let inputUnit = engine.inputNode.audioUnit else {
+                throw SystemAudioRouteError.builtInMicrophoneUnavailable
+            }
+            let selected = try SystemAudioRouteInspector.inputDevice(of: inputUnit)
+            let microphone = try SystemAudioRouteInspector.builtInMicrophone()
+            let route = try SystemAudioRouteInspector.currentRoute(inputDeviceID: microphone)
             diagnostics.audioRoute = route
             diagnostics.deviceName = route.input?.name ?? "No input"
             if let issue = AudioHardwarePolicy.issue(for: route, strategy: strategy) {
                 invalidateRoute(with: Self.captureError(for: issue))
-            } else if engine?.isRunning != true {
-                invalidateRoute(with: .audioRouteUnavailable(
-                    "The audio device changed and capture stopped. Confirm the built-in routes, then press Resume."
-                ))
+            } else if selected != microphone || !engine.isRunning {
+                // Rebind only an existing listening session. stop() cancels this
+                // pending start, so a user pause or sleep cannot reopen the mic.
+                let strategy = self.strategy
+                stopCapture()
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let generation = self.captureGeneration
+                    do {
+                        // A pause before this task runs invalidates the recovery.
+                        guard self.recoveryGeneration == generation else { return }
+                        try await self.start(strategy: strategy)
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        self.invalidateRoute(with: .audioRouteUnavailable(error.localizedDescription))
+                    }
+                }
+                recoveryGeneration = captureGeneration
             }
         } catch {
             invalidateRoute(with: .audioRouteUnavailable(error.localizedDescription))

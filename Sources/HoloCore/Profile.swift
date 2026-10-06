@@ -77,7 +77,7 @@ public struct CalibrationSummary: Codable, Equatable, Sendable {
 }
 
 public struct HoloProfile: Codable, Equatable, Sendable, Identifiable {
-    public static let currentVersion = 3
+    public static let currentVersion = 4
 
     public var version: Int
     public var id: UUID
@@ -126,11 +126,11 @@ public enum ProfileStoreError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .invalidCurrentTopology(let filename):
-            return "The current profile \(filename) does not contain exactly the four supported zones."
+            return "The current profile \(filename) does not contain exactly the two supported zones."
         case .invalidCurrentClassifier(let filename):
             return "The classifier in \(filename) is incomplete or internally inconsistent. Recalibrate this desk."
         case .invalidCurrentCalibration(let filename):
-            return "The calibration summary in \(filename) does not match its four-zone classifier. Recalibrate this desk."
+            return "The calibration summary in \(filename) does not match its two-zone classifier. Recalibrate this desk."
         }
     }
 }
@@ -379,5 +379,64 @@ public final class ApproachComparisonStore {
         let comparison = try decoder.decode(ApproachComparison.self, from: Data(contentsOf: fileURL))
         guard comparison.topologyZoneCount == DeskZone.allCases.count else { return nil }
         return comparison
+    }
+}
+
+/// Reusable non-desk sounds. Desk tap calibration remains profile-specific.
+public struct SharedRejectionLibrary: Codable, Equatable, Sendable {
+    public var version = 1
+    public private(set) var samples: [LabeledTap]
+
+    public init(samples: [LabeledTap] = []) {
+        var ids = Set<UUID>()
+        self.samples = samples.filter { sample in
+            sample.zone == nil && sample.feature.version == TapFeatureVector.schemaVersion
+                && !sample.feature.names.isEmpty
+                && sample.feature.values.count == sample.feature.names.count
+                && sample.feature.values.allSatisfy(\.isFinite)
+                && ids.insert(sample.id).inserted
+        }
+    }
+
+    public func compatible(with feature: TapFeatureVector) -> [LabeledTap] {
+        samples.filter {
+            $0.feature.strategy == feature.strategy && $0.feature.version == feature.version
+                && $0.feature.names == feature.names
+        }
+    }
+
+    public mutating func replaceCompatible(with feature: TapFeatureVector, samples replacements: [LabeledTap]) {
+        let retained = samples.filter {
+            $0.feature.strategy != feature.strategy || $0.feature.version != feature.version
+                || $0.feature.names != feature.names
+        }
+        let compatibleReplacements = Self(samples: replacements).compatible(with: feature)
+        self = Self(samples: retained + compatibleReplacements)
+    }
+}
+
+public final class SharedRejectionStore {
+    public let fileURL: URL
+
+    public init(fileURL: URL) {
+        self.fileURL = fileURL
+    }
+
+    public func loadOrMigrate(profiles: [HoloProfile]) throws -> SharedRejectionLibrary {
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            let library = try JSONDecoder().decode(SharedRejectionLibrary.self, from: Data(contentsOf: fileURL))
+            guard library.version == 1 else {
+                throw CocoaError(.coderReadCorrupt)
+            }
+            return SharedRejectionLibrary(samples: library.samples)
+        }
+        let library = SharedRejectionLibrary(samples: profiles.flatMap { $0.classifier.negativeExamples })
+        try save(library)
+        return library
+    }
+
+    public func save(_ library: SharedRejectionLibrary) throws {
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(library).write(to: fileURL, options: .atomic)
     }
 }

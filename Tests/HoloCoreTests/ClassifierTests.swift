@@ -2,7 +2,7 @@ import XCTest
 @testable import HoloCore
 
 final class ClassifierTests: XCTestCase {
-    func testClassifierIdentifiesAllFourSyntheticZones() throws {
+    func testClassifierIdentifiesBothSyntheticZones() throws {
         let classifier = try TrainedTapClassifier.train(positiveExamples: trainingSamples())
         let linearModel = try XCTUnwrap(classifier.linearZoneModel)
         XCTAssertEqual(linearModel.coefficients.count, DeskZone.allCases.count)
@@ -19,11 +19,11 @@ final class ClassifierTests: XCTestCase {
 
     func testClassifierRejectsWeakAndOutOfDistributionSignals() throws {
         let classifier = try TrainedTapClassifier.train(positiveExamples: trainingSamples())
-        var weak = feature(zone: .leftBottom)
+        var weak = feature(zone: .right)
         weak.quality.peakAmplitude = 0.001
         XCTAssertEqual(classifier.predict(weak).rejectionReason, .weakSignal)
 
-        var alien = feature(zone: .leftBottom)
+        var alien = feature(zone: .right)
         alien.values = [100, -100, 80, -70]
         XCTAssertEqual(classifier.predict(alien).rejectionReason, .outOfDistribution)
     }
@@ -31,25 +31,25 @@ final class ClassifierTests: XCTestCase {
     func testClassifierRejectsClippedAndNoisySignalsBeforeDistanceMatching() throws {
         let classifier = try TrainedTapClassifier.train(positiveExamples: trainingSamples())
 
-        var clipped = feature(zone: .rightTop)
+        var clipped = feature(zone: .right)
         clipped.quality.clippingFraction = SignalQuality.maximumReliableClippingFraction + 0.01
         clipped.quality.peakAmplitude = 0.001
         XCTAssertEqual(classifier.predict(clipped).rejectionReason, .clippedSignal)
 
-        var noisy = feature(zone: .rightTop)
+        var noisy = feature(zone: .right)
         noisy.quality.signalToNoiseDB = SignalQuality.minimumClassificationSignalToNoiseDB - 0.1
         XCTAssertEqual(classifier.predict(noisy).rejectionReason, .lowSignalToNoise)
     }
 
     func testSchemaMismatchIsRejected() throws {
         let classifier = try TrainedTapClassifier.train(positiveExamples: trainingSamples())
-        var mismatched = feature(zone: .leftBottom)
+        var mismatched = feature(zone: .right)
         mismatched.names[0] = "other"
         XCTAssertEqual(classifier.predict(mismatched).rejectionReason, .schemaMismatch)
     }
 
     func testClassifierRejectsCalibratedNegativeExample() throws {
-        let typing = feature(zone: .leftTop, jitter: 0.042)
+        let typing = feature(zone: .left, jitter: 0.042)
         let classifier = try TrainedTapClassifier.train(
             positiveExamples: trainingSamples(),
             negativeExamples: [LabeledTap(
@@ -76,7 +76,7 @@ final class ClassifierTests: XCTestCase {
         classifier.outlierThreshold = 1_000_000
         classifier.featureWeights[classifier.featureWeights.count - 1] = 1e-9
 
-        var speechLike = samples.first { $0.zone == .rightBottom }!.feature
+        var speechLike = samples.first { $0.zone == .right }!.feature
         speechLike.values[speechLike.values.count - 1] = 2.0
 
         XCTAssertEqual(classifier.predict(speechLike).rejectionReason, .outOfDistribution)
@@ -96,32 +96,32 @@ final class ClassifierTests: XCTestCase {
 
         XCTAssertNil(decoded.positiveNoveltyThreshold)
         XCTAssertNil(decoded.linearZoneModel)
-        XCTAssertEqual(decoded.predict(feature(zone: .leftTop)).zone, .leftTop)
+        XCTAssertEqual(decoded.predict(feature(zone: .left)).zone, .left)
     }
 
     func testClassifierRejectsIndistinguishableZonesAsAmbiguous() throws {
         let collided = trainingSamples().map { sample -> LabeledTap in
-            guard sample.zone == .leftBottom else { return sample }
+            guard sample.zone == .right else { return sample }
             var replacement = sample
-            let originalJitter = -sample.feature.values[1]
-            replacement.feature = feature(zone: .leftTop, jitter: originalJitter)
+            let originalJitter = sample.feature.values[0]
+            replacement.feature = feature(zone: .left, jitter: originalJitter)
             return replacement
         }
         let classifier = try TrainedTapClassifier.train(positiveExamples: collided)
 
-        let decision = classifier.predict(feature(zone: .leftTop, jitter: 0))
+        let decision = classifier.predict(feature(zone: .left, jitter: 0))
 
         XCTAssertNil(decision.zone)
         XCTAssertEqual(decision.rejectionReason, .ambiguousZone)
     }
 
     func testClassifierAcceptsCloseButUsableDecisionAtRelaxedSeparation() throws {
-        let leftRearValues = [-100.0, -100.0, -0.1, -0.1, -0.1, 100.0, 100.0, 100.0]
-        let leftFrontValues = [-100.0, -100.0, -0.1055, -0.1055, -0.1055, 100.0, 100.0, 100.0]
-        let samples = leftRearValues.map {
-            LabeledTap(zone: .leftTop, feature: oneDimensionFeature($0))
-        } + leftFrontValues.map {
-            LabeledTap(zone: .leftBottom, feature: oneDimensionFeature($0))
+        let leftValues = [-100.0, -100.0, -0.1, -0.1, -0.1, 100.0, 100.0, 100.0]
+        let rightValues = [-100.0, -100.0, -0.1055, -0.1055, -0.1055, 100.0, 100.0, 100.0]
+        let samples = leftValues.map {
+            LabeledTap(zone: .left, feature: oneDimensionFeature($0))
+        } + rightValues.map {
+            LabeledTap(zone: .right, feature: oneDimensionFeature($0))
         }
         let classifier = try TrainedTapClassifier.train(positiveExamples: samples)
 
@@ -129,7 +129,7 @@ final class ClassifierTests: XCTestCase {
         let ranked = decision.zoneDistances.filter(\.isFinite).sorted()
         let relativeSeparation = (ranked[1] - ranked[0]) / ranked[1]
 
-        XCTAssertEqual(decision.zone, .leftTop)
+        XCTAssertEqual(decision.zone, .left)
         XCTAssertNil(decision.rejectionReason)
         XCTAssertGreaterThanOrEqual(relativeSeparation, ClassifierDefaults.minimumRelativeSeparation)
         XCTAssertLessThan(relativeSeparation, 0.055)

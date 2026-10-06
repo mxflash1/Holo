@@ -82,7 +82,7 @@ struct ZoneActionsView: View {
                 ContentUnavailableView {
                     Label("No Desk Profile", systemImage: "macbook")
                 } description: {
-                    Text("Calibrate the four zones before assigning actions.")
+                    Text("Calibrate the two zones before assigning actions.")
                 } actions: {
                     Button("Open Calibration") { model.section = .calibrate }
                         .holoPrimaryButton()
@@ -94,7 +94,7 @@ struct ZoneActionsView: View {
             Button("Delete Profile", role: .destructive) { model.deleteSelectedProfile() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The saved calibration and its four actions will be removed.")
+            Text("The saved calibration and its two actions will be removed.")
         }
     }
 

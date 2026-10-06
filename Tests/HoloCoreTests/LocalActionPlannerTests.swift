@@ -113,7 +113,7 @@ final class LocalActionPlannerTests: XCTestCase {
 
     func testAutomaticDispatchRequiresAcceptedDecisionOnDesk() {
         let accepted = ClassificationDecision(
-            zone: .rightTop,
+            zone: .right,
             confidence: 0.9,
             signalStrength: 0.8,
             zoneDistances: [],

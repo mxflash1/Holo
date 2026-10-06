@@ -2,7 +2,7 @@ import XCTest
 @testable import HoloCore
 
 final class PipelineIntegrationTests: XCTestCase {
-    func testStreamingDetectorThroughClassifierForAllFourZones() throws {
+    func testStreamingDetectorThroughClassifierForBothZones() throws {
         var training: [LabeledTap] = []
         for zone in DeskZone.allCases {
             for sampleIndex in 0..<5 {

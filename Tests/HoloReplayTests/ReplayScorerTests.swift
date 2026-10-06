@@ -13,15 +13,13 @@ final class ReplayScorerTests: XCTestCase {
         let evaluation = try ReplayInput.decodeEvaluation(encodedEvaluation)
         let result = try ReplayScorer.score(profile: profile, evaluation: evaluation)
 
-        XCTAssertEqual(result.coverage.withVectors, 4)
-        XCTAssertEqual(result.coverage.total, 4)
+        XCTAssertEqual(result.coverage.withVectors, 2)
+        XCTAssertEqual(result.coverage.total, 2)
         XCTAssertEqual(result.overallAccuracy, evaluation.overallAccuracy, accuracy: 1e-12)
         XCTAssertEqual(result.accuracyDelta, 0, accuracy: 1e-12)
         XCTAssertEqual(result.confusionMatrix, [
-            [1, 0, 0, 0],
-            [0, 1, 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
+            [1, 0],
+            [0, 1]
         ])
     }
 
@@ -52,17 +50,17 @@ final class ReplayScorerTests: XCTestCase {
     func testMissingVectorStaysIncorrectAndInDenominator() throws {
         let fixture = try makeFixture()
         let classifier = fixture.profile.classifier
-        let retainedFeature = feature(zone: .leftTop, jitter: 0.01)
+        let retainedFeature = feature(zone: .left, jitter: 0.01)
         let records = [
             EvaluationRecord(
-                expectedZone: .leftTop,
+                expectedZone: .left,
                 decision: classifier.predict(retainedFeature),
                 responseLatencyMilliseconds: 10,
                 feature: retainedFeature
             ),
             EvaluationRecord(
-                expectedZone: .leftBottom,
-                decision: classifier.predict(feature(zone: .leftBottom, jitter: 0.01)),
+                expectedZone: .right,
+                decision: classifier.predict(feature(zone: .right, jitter: 0.01)),
                 responseLatencyMilliseconds: 10
             )
         ]
@@ -82,7 +80,7 @@ final class ReplayScorerTests: XCTestCase {
         XCTAssertEqual(result.recordedAccuracy, 1, accuracy: 1e-12)
         XCTAssertEqual(result.accuracyDelta, -0.5, accuracy: 1e-12)
         XCTAssertEqual(result.outcomes.missingVector, 1)
-        XCTAssertEqual(result.perZoneAccuracy.first { $0.zone == "LF" }?.total, 1)
+        XCTAssertEqual(result.perZoneAccuracy.first { $0.zone == "R" }?.total, 1)
     }
 
     private func makeFixture() throws -> (profile: HoloProfile, evaluation: EvaluationReport) {

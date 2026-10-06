@@ -2,11 +2,11 @@ import XCTest
 @testable import HoloCore
 
 final class GuidedSessionTests: XCTestCase {
-    func testCalibrationRequiresTenSamplesInEachOfFourZones() {
+    func testCalibrationRequiresTenSamplesInEachOfTwoZones() {
         var session = CalibrationSession(draft: CalibrationDraft())
 
-        XCTAssertEqual(session.totalRequired, 40)
-        XCTAssertEqual(session.currentZone, .leftTop)
+        XCTAssertEqual(session.totalRequired, 20)
+        XCTAssertEqual(session.currentZone, .left)
 
         for zone in DeskZone.allCases {
             for _ in 0..<session.targetPerZone {
@@ -20,11 +20,11 @@ final class GuidedSessionTests: XCTestCase {
         XCTAssertEqual(session.progress, 1, accuracy: 0.0001)
         XCTAssertEqual(
             DeskZone.allCases.map { session.count(for: $0) },
-            Array(repeating: 10, count: 4)
+            Array(repeating: 10, count: 2)
         )
     }
 
-    func testAccuracySessionRequiresFifteenSamplesInEachOfFourZones() {
+    func testAccuracySessionRequiresFifteenSamplesInEachOfTwoZones() {
         var session = EvaluationSession()
 
         XCTAssertEqual(session.targetPerZone, EvaluationAcceptance.tapsPerZone)
@@ -46,7 +46,7 @@ final class GuidedSessionTests: XCTestCase {
         }
 
         XCTAssertNil(session.currentZone)
-        XCTAssertEqual(session.records.count, 60)
+        XCTAssertEqual(session.records.count, 30)
         XCTAssertEqual(session.progress, 1, accuracy: 0.0001)
     }
 
@@ -68,7 +68,7 @@ final class GuidedSessionTests: XCTestCase {
 
         XCTAssertNil(session.currentStrategy)
         XCTAssertNil(session.currentZone)
-        XCTAssertEqual(session.samples.count, 36)
+        XCTAssertEqual(session.samples.count, 18)
         XCTAssertEqual(session.progress, 1, accuracy: 0.0001)
     }
 

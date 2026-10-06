@@ -1,3 +1,33 @@
+# Holo Left Right — local variant
+
+This variant learns **Left** and **Right** as two distinct classes. Calibration requires ten taps across each side (20 total); the held-out evaluation uses fifteen per side (30 total). This simplifies the classification task, but accuracy still needs to be measured on your desk.
+
+- Starts paused, with the microphone off. Passive acoustics remains the default.
+- Pins Holo capture to the built-in MacBook microphone without changing the system default input. AirPods can stay connected for playback and other apps. Audio-engine route interruptions rebind the microphone while listening; Pause and sleep cancel recovery. Active/Hybrid still require built-in speaker output.
+- **Command–H** toggles listening globally. This takes over the usual Hide shortcut while Holo is running. The menu bar icon also provides Listen, Pause, Open Holo, and Quit.
+- Closing the window leaves the app running. Resume through the menu or global shortcut selects Desk so accepted taps can run assigned actions.
+- Pausing tears down the audio engine; sleeping the Mac pauses listening without automatically resuming on wake.
+- During guided calibration/evaluation, the background shortcut can pause capture but does not bypass the guided workflow. Reopen the window to continue.
+- Uses the separate bundle identifier `com.holo.leftright`, preserving the original app's profiles. Four-zone profiles cannot be used for two-zone classification; recalibrate and assign two actions.
+- **Create New Profile** opens a blank name/setup form before listening starts. Enter a name, choose Begin Calibration, then save the completed calibration to add a separate desk. Cancel leaves your saved desks unchanged.
+- Non-desk rejection examples (talking, typing, mouse clicks, laptop touches and background noise) are shared across desks. Existing saved examples are imported once; each new calibration reuses compatible examples automatically. Adding or clearing examples takes effect for all compatible profiles when you save the desk, and cancellation leaves the shared library unchanged. Desk tap examples remain separate.
+- No automatic login launch. Launch the app once per login when needed.
+
+Build locally with microphone entitlements preserved (replace the signing identity with one listed by `security find-identity -v -p codesigning`):
+
+```sh
+xcodebuild -project Holo.xcodeproj -scheme Holo -configuration Release \
+  -derivedDataPath /tmp/HoloTwoZoneBuild CODE_SIGN_STYLE=Manual \
+  CODE_SIGN_IDENTITY="Apple Development: Your Name (ID)" DEVELOPMENT_TEAM= build
+swift test
+```
+
+This is a local development build, not the publisher's notarized release. macOS may request microphone consent again when the development binary changes. Idle CPU measurements do not establish battery life while actively listening.
+
+---
+
+The upstream documentation below describes the original four-zone release and its historical verification, not this local variant.
+
 # Holo
 
 **Tap your desk. Your Mac responds.**

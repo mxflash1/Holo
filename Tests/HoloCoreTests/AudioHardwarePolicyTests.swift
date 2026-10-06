@@ -29,6 +29,11 @@ final class AudioHardwarePolicyTests: XCTestCase {
         XCTAssertNil(AudioHardwarePolicy.issue(for: route, strategy: .passive))
     }
 
+    func testPinnedBuiltInInputAllowsAirPodsOutputInPassiveMode() {
+        let pinnedRoute = AudioRouteInfo(input: builtInInput, output: externalOutput)
+        XCTAssertNil(AudioHardwarePolicy.issue(for: pinnedRoute, strategy: .passive))
+    }
+
     func testActiveAndHybridRejectExternalOutput() {
         let route = AudioRouteInfo(input: builtInInput, output: externalOutput)
 

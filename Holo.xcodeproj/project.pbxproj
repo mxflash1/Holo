@@ -1048,7 +1048,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.holo.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.holo.leftright;
 				PRODUCT_NAME = Holo;
 				SDKROOT = macosx;
 			};
@@ -1284,7 +1284,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.holo.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.holo.leftright;
 				PRODUCT_NAME = Holo;
 				SDKROOT = macosx;
 			};

@@ -93,7 +93,7 @@ struct RootView: View {
                 Button(action: model.openSetup) {
                     Label("Set Up Desk", systemImage: "scope")
                 }
-                .help("Calibrate the four zones before listening")
+                .help("Calibrate the two zones before listening")
             } else {
                 Button(action: model.togglePause) {
                     Label(
@@ -141,7 +141,7 @@ struct RootView: View {
     }
 
     private var microphoneDetail: String {
-        if needsInitialSetup { return "Calibrate four zones first" }
+        if needsInitialSetup { return "Calibrate two zones first" }
         return model.audio.isListening ? "Processed on this Mac" : "No audio capture"
     }
 

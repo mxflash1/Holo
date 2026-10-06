@@ -71,9 +71,6 @@ struct DeskMapView: View {
             VStack(alignment: zone.isLeft ? .trailing : .leading, spacing: 3) {
                 Text(zone.positionName)
                     .font(.callout.weight(.medium))
-                Text(zone.isLeft ? "Left" : "Right")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             if let counts, zone.rawValue < counts.count {

@@ -3,7 +3,8 @@ import SwiftUI
 
 struct CalibrationView: View {
     @ObservedObject var model: AppModel
-    @State private var showRejectionTraining = true
+    @State private var showRejectionTraining = false
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
         Group {
@@ -15,21 +16,30 @@ struct CalibrationView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(HoloTheme.background)
+        .onChange(of: model.isCreatingProfile) { _, creating in
+            if creating { nameFocused = true }
+        }
     }
 
     private var setup: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Set up your desk")
+                Text(model.isCreatingProfile ? "Create a new desk" : "Set up your desk")
                     .font(.title.weight(.semibold))
-                Text("Ten clean taps in each of four broad zones. Spread them around each highlighted area so Holo learns the whole zone, not one point.")
+                Text("Ten clean taps in each of two broad zones. Spread them around each highlighted area so Holo learns the whole zone, not one point.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             Form {
                 Section("Profile") {
-                    TextField("Name", text: $model.calibrationDraft.name, prompt: Text("My Desk"))
+                    TextField("Name", text: $model.calibrationDraft.name, prompt: Text("Home, office, library…"))
+                        .focused($nameFocused)
+                    if model.isCreatingProfile {
+                        Text("Name this desk, then calibrate its left and right taps. Your existing desks stay saved, and shared sounds are reused automatically.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     TextField("Surface", text: $model.calibrationDraft.surfaceDescription, prompt: Text("Wood, laminate, glass…"))
                     TextField("MacBook position", text: $model.calibrationDraft.laptopPositionNote, prompt: Text("Centered, near the back edge…"))
                 }
@@ -57,14 +67,14 @@ struct CalibrationView: View {
                 }
 
                 Section {
-                    if let comparison = model.applicableApproachComparison {
+                    if let comparison = model.applicableApproachComparison, !model.isCreatingProfile {
                         Label(
                             "The latest diagnostics comparison selected \(comparison.selectedStrategy.displayName).",
                             systemImage: "checkmark.circle"
                         )
                     } else {
                         Label(
-                            model.selectedProfile == nil
+                            (model.selectedProfile == nil || model.isCreatingProfile)
                                 ? "Passive sensing is selected until you compare approaches in Diagnostics."
                                 : "This profile keeps its saved approach until you compare approaches on this desk.",
                             systemImage: "info.circle"
@@ -72,15 +82,16 @@ struct CalibrationView: View {
                     }
 
                     HStack {
-                        if let profile = model.selectedProfile {
+                        if let profile = model.selectedProfile, !model.isCreatingProfile {
                             Button("Recalibrate \(profile.name)") {
                                 model.beginCalibration(draft: model.calibrationDraft, recalibrating: profile)
                             }
                             .holoPrimaryButton()
                             .controlSize(.large)
+                            .disabled(model.calibrationDraft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                             Button("Create New Profile") {
-                                model.beginCalibration(draft: model.calibrationDraft)
+                                model.prepareNewProfile()
                             }
                             .holoSecondaryButton()
                         } else {
@@ -89,9 +100,13 @@ struct CalibrationView: View {
                             }
                             .holoPrimaryButton()
                             .controlSize(.large)
+                            .disabled(model.calibrationDraft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            if model.isCreatingProfile {
+                                Button("Cancel") { model.cancelNewProfile() }
+                                    .holoSecondaryButton()
+                            }
                         }
                     }
-                    .disabled(model.calibrationDraft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .formStyle(.grouped)
@@ -271,12 +286,12 @@ struct CalibrationView: View {
                 Spacer()
             }
 
-            DisclosureGroup("Teach Holo sounds to reject (recommended)", isExpanded: $showRejectionTraining) {
+            DisclosureGroup("Shared sounds to ignore: \(session.negativeSamples.count) examples (optional)", isExpanded: $showRejectionTraining) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Capture Talking first: speak normally for a few seconds. Only speech peaks that reach the classifier are counted, and only acoustic features are saved.")
+                    Text("Saved examples are reused automatically across desks. You can save this desk now, or capture more sounds below. Clearing or adding examples updates the shared library when you save; cancelling leaves it unchanged. Only acoustic features are saved.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    ForEach(["Talking", "Typing", "Laptop touch", "Background noise"], id: \.self) { label in
+                    ForEach(["Talking", "Typing", "Mouse clicks", "Laptop touch", "Background noise"], id: \.self) { label in
                         HStack {
                             Button {
                                 model.collectNegativeExamples(label: session.negativeLabel == label ? nil : label)

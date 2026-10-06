@@ -10,7 +10,7 @@ struct EvaluationView: View {
                 ContentUnavailableView {
                     Label("No Desk Profile", systemImage: "checkmark.seal")
                 } description: {
-                    Text("Calibrate the four desk zones before evaluating them.")
+                    Text("Calibrate the two desk zones before evaluating them.")
                 } actions: {
                     Button("Open Calibration") { model.section = .calibrate }
                         .holoPrimaryButton()

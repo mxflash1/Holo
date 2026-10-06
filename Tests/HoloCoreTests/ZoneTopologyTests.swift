@@ -2,37 +2,37 @@ import XCTest
 @testable import HoloCore
 
 final class ZoneTopologyTests: XCTestCase {
-    func testDeskHasExactlyTwoZonesOnEachSideOfMacBook() {
-        XCTAssertEqual(DeskZone.allCases.count, 4)
+    func testDeskHasExactlyOneZoneOnEachSideOfMacBook() {
+        XCTAssertEqual(DeskZone.allCases.count, 2)
         XCTAssertEqual(
             DeskZone.allCases.filter(\.isLeft),
-            [.leftTop, .leftBottom]
+            [.left]
         )
         XCTAssertEqual(
             DeskZone.allCases.filter { !$0.isLeft },
-            [.rightTop, .rightBottom]
+            [.right]
         )
-        XCTAssertEqual(DeskZone.allCases.map(\.verticalIndex), [0, 1, 0, 1])
-        XCTAssertEqual(DeskZone.allCases.map(\.shortName), ["LR", "LF", "RR", "RF"])
-        XCTAssertEqual(DeskZone.allCases.map(\.positionName), ["Rear", "Front", "Rear", "Front"])
+        XCTAssertEqual(DeskZone.allCases.map(\.verticalIndex), [0, 0])
+        XCTAssertEqual(DeskZone.allCases.map(\.shortName), ["L", "R"])
+        XCTAssertEqual(DeskZone.allCases.map(\.positionName), ["Left", "Right"])
     }
 
     func testDefaultProfileConfigurationHasOneActionPerZone() throws {
         let classifier = try TrainedTapClassifier.train(positiveExamples: trainingSamples())
         let profile = HoloProfile(
-            name: "Four zone desk",
+            name: "Two zone desk",
             surfaceDescription: "Wood",
             laptopPositionNote: "Centered",
             classifier: classifier,
             calibration: CalibrationSummary(
-                sampleCount: 8,
-                samplesPerZone: Array(repeating: 2, count: 4),
+                sampleCount: 4,
+                samplesPerZone: Array(repeating: 2, count: 2),
                 leaveOneOutAccuracy: nil
             )
         )
 
         XCTAssertEqual(profile.zones.map(\.zone), DeskZone.allCases)
-        XCTAssertEqual(profile.zones.count, 4)
+        XCTAssertEqual(profile.zones.count, 2)
     }
 
     private func trainingSamples() -> [LabeledTap] {

@@ -45,7 +45,7 @@ struct LiveSurfaceView: View {
                 .foregroundStyle(.secondary)
             Text("Set up the desk around your MacBook")
                 .font(.title2.weight(.semibold))
-            Text("Taps cannot be assigned until Holo learns this desk. You will tap ten times across each of four broad zones: rear and front on both sides of the MacBook.")
+            Text("Taps cannot be assigned until Holo learns this desk. You will tap ten times across each of two broad zones: left and right on either side of the MacBook.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -53,7 +53,7 @@ struct LiveSurfaceView: View {
             Text("Microphone access is requested when calibration begins.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
-            Button("Set Up Four Zones") {
+            Button("Set Up Two Zones") {
                 model.openSetup()
             }
             .holoPrimaryButton()
