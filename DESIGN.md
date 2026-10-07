@@ -34,10 +34,15 @@ References were reviewed on July 16, 2026.
 
 ## Screen hierarchy
 
-- **Desk:** two continuous two-zone rails around one MacBook silhouette, one compact result strip, and no-profile onboarding in place. Individual zones are not rendered as four floating cards.
-- **Calibration:** one target at a time. Beginning setup is the explicit capture intent; Holo then collects ten clean taps spread across the highlighted area, disarms during each move, and automatically arms the next zone after a short transition. A visible Arm control remains available after a pause. A measured consistency check can redo the weakest zone before saving, and Talking rejection capture is surfaced as the recommended final step.
-- **Actions:** a four-row editor grouped by the left and right side of the MacBook. Native pickers progressively reveal only the fields needed for the selected action, including Shortcuts, app/file bookmarks, shell commands, and screenshots.
-- **Diagnostics:** factual hardware and signal details in a form, with sensing comparisons disclosed on demand.
-- **Accuracy Test:** a focused 60-tap run followed by a plain results table and four-by-four confusion matrix.
+Approved October 7, 2026. Native system appearance, typography and accessible controls remain the visual foundation.
 
-The sidebar keeps Desk, Calibration, Actions, and Accuracy Test in workflow order. Hardware and sensing diagnostics live in a separate Advanced section.
+- **Overview:** two broad left/right zones around the MacBook, visible assigned actions and a compact result strip.
+- **My Desks:** saved desks and their surface/position notes, explicit selection, New Desk, Calibrate, Accuracy Test, Actions and Location controls. New Desk opens a blank naming form before capture.
+- **Shared Sounds:** standalone capture, counts, save/cancel and explicit clearing for talking, typing, mouse clicks, laptop touch and background noise. Reused automatically across compatible desks.
+- **Locations:** automatic switching, measured accuracy, per-desk saved locations and radius selection. No hidden primary controls in nested menus.
+- **Actions:** one action per left/right zone, using native controls.
+- **Settings:** a shortcut recorder with persistence, cancellation and conflict feedback; microphone/background behavior; Advanced access to the retained diagnostic, export, recording and experimental sensing tools.
+
+The sidebar lists everyday sections first and saved desks directly beneath them. Settings and microphone state sit at the bottom. Calibration, accuracy evaluation and diagnostics appear as current tasks when opened. Preserve all user data and experimental tools unless deletion is explicitly approved.
+
+The default window is 1040 × 700, with a 940 × 640 minimum. Use available space for desk selection and actual actions rather than decorative content. Follow the system light/dark appearance and reduced-motion preference.

@@ -32,5 +32,9 @@
 	<string>Holo listens for desk taps locally. Audio is discarded unless you explicitly enable debug recording.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+	<key>NSLocationUsageDescription</key>
+	<string>Holo uses your location to choose a saved desk profile. Desk locations stay on this Mac.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Holo uses your location to choose a saved desk profile. Desk locations stay on this Mac.</string>
 </dict>
 </plist>

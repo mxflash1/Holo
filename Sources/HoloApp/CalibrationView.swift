@@ -3,7 +3,6 @@ import SwiftUI
 
 struct CalibrationView: View {
     @ObservedObject var model: AppModel
-    @State private var showRejectionTraining = false
     @FocusState private var nameFocused: Bool
 
     var body: some View {
@@ -286,39 +285,11 @@ struct CalibrationView: View {
                 Spacer()
             }
 
-            DisclosureGroup("Shared sounds to ignore: \(session.negativeSamples.count) examples (optional)", isExpanded: $showRejectionTraining) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Saved examples are reused automatically across desks. You can save this desk now, or capture more sounds below. Clearing or adding examples updates the shared library when you save; cancelling leaves it unchanged. Only acoustic features are saved.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    ForEach(["Talking", "Typing", "Mouse clicks", "Laptop touch", "Background noise"], id: \.self) { label in
-                        HStack {
-                            Button {
-                                model.collectNegativeExamples(label: session.negativeLabel == label ? nil : label)
-                            } label: {
-                                Label(
-                                    session.negativeLabel == label ? "Stop \(label)" : "Capture \(label)",
-                                    systemImage: session.negativeLabel == label ? "stop.circle.fill" : "record.circle"
-                                )
-                            }
-                            .holoSecondaryButton()
-                            .disabled(!model.audio.isListening)
-                            Text("\(session.negativeCount(for: label)) captured")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                                .accessibilityLabel("\(session.negativeCount(for: label)) \(label) examples captured")
-                            if session.negativeCount(for: label) > 0 {
-                                Button("Clear") {
-                                    model.clearNegativeExamples(label: label)
-                                }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel("Clear \(label) examples")
-                            }
-                        }
-                    }
-                }
-                .padding(.top, 8)
-            }
+            Label("\(session.negativeSamples.count) shared sound examples included", systemImage: "waveform.badge.minus")
+                .font(.callout)
+            Text("Manage reusable typing, clicks and background sounds in Shared Sounds after saving this desk.")
+                .font(.caption).foregroundStyle(.secondary)
+
         }
         .padding(18)
         .frame(maxWidth: 760)

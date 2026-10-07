@@ -11,12 +11,36 @@ struct RootView: View {
                     Section {
                         ForEach(AppSection.primary) { navigationRow($0) }
                     }
-
-                    Section("Advanced") {
-                        ForEach(AppSection.advanced) { navigationRow($0) }
+                    Section("Saved Desks") {
+                        ForEach(model.profiles) { profile in
+                            Button {
+                                model.selectProfile(profile.id)
+                                model.section = .desks
+                            } label: {
+                                HStack {
+                                    Text(profile.name)
+                                    Spacer()
+                                    if profile.id == model.selectedProfileID { Image(systemName: "checkmark").font(.caption) }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(model.guidedSection != nil)
+                        }
+                        Button("New Desk", systemImage: "plus", action: model.prepareNewProfile)
+                            .buttonStyle(.plain)
+                            .disabled(model.guidedSection != nil)
+                    }
+                    if [.calibrate, .evaluate, .diagnostics].contains(model.section) {
+                        Section("Current task") { navigationRow(model.section) }
                     }
                 }
                 .listStyle(.sidebar)
+                Button { model.section = .settings } label: {
+                    Label("Settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(14)
+                .disabled(!model.canNavigate(to: .settings))
 
                 Divider()
 
@@ -53,6 +77,14 @@ struct RootView: View {
     @ViewBuilder
     private var content: some View {
         switch model.section {
+        case .desks:
+            DesksView(model: model)
+        case .sounds:
+            SharedSoundsView(model: model)
+        case .locations:
+            LocationsView(model: model, service: model.deskLocation)
+        case .settings:
+            AppSettingsView(model: model, shortcut: model.shortcutController)
         case .live:
             LiveSurfaceView(model: model)
         case .calibrate:
@@ -69,24 +101,8 @@ struct RootView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            if !model.profiles.isEmpty {
-                Menu {
-                    ForEach(model.profiles) { profile in
-                        Button {
-                            model.selectProfile(profile.id)
-                        } label: {
-                            if profile.id == model.selectedProfileID {
-                                Label(profile.name, systemImage: "checkmark")
-                            } else {
-                                Text(profile.name)
-                            }
-                        }
-                    }
-                } label: {
-                    Label(model.selectedProfile?.name ?? "Profile", systemImage: "macbook")
-                }
-                .help("Choose a desk profile")
-                .disabled(model.guidedSection != nil)
+            if let profile = model.selectedProfile {
+                Text(profile.name).font(.callout).foregroundStyle(.secondary)
             }
 
             if model.selectedProfile == nil && model.guidedSection == nil {

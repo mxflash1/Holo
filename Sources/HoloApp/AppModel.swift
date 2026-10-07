@@ -62,13 +62,17 @@ final class AppModel: ObservableObject {
     @Published private(set) var hasDebugRecordings = false
     @Published var errorMessage: String?
 
+    let shortcutController = ListeningShortcutController()
     let audio = AudioCaptureService()
+    let deskLocation = DeskLocationService()
     @Published var calibrationDraft = CalibrationDraft()
     @Published private(set) var isCreatingProfile = false
 
     private let profileStore: ProfileStore?
     private var sharedRejectionStore: SharedRejectionStore?
-    private var sharedRejections = SharedRejectionLibrary()
+    @Published private(set) var sharedRejections = SharedRejectionLibrary()
+    @Published private(set) var sharedSoundDraft: [LabeledTap]?
+    @Published private(set) var sharedCaptureLabel: String?
     private let evaluationStore: EvaluationStore?
     private let comparisonStore: ApproachComparisonStore?
     private let debugStore: DebugRecordingStore?
@@ -160,6 +164,14 @@ final class AppModel: ObservableObject {
         actionDispatcher.onAsyncError = { [weak self] error in
             self?.errorMessage = "The assigned action failed. \(error.localizedDescription)"
         }
+        deskLocation.availableProfiles = { [weak self] in Set(self?.profiles.map(\.id) ?? []) }
+        deskLocation.selectCandidate = { [weak self] id in
+            guard let self, self.guidedSection == nil, !self.isCreatingProfile,
+                  self.section == .live, !self.isStartingListening else { return false }
+            if self.selectedProfileID != id { self.selectProfile(id, automatically: true) }
+            return true
+        }
+        shortcutController.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
         audio.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }.store(in: &cancellables)
@@ -171,7 +183,8 @@ final class AppModel: ObservableObject {
     }
 
     var guidedSection: AppSection? {
-        GuidedNavigationGate.guidedSection(
+        if sharedSoundDraft != nil { return .sounds }
+        return GuidedNavigationGate.guidedSection(
             calibrationActive: calibrationSession != nil,
             evaluationActive: evaluationSession != nil,
             benchmarkActive: benchmarkSession != nil
@@ -224,14 +237,16 @@ final class AppModel: ObservableObject {
     func activateOnLaunch() async {
         guard !didActivateOnLaunch else { return }
         didActivateOnLaunch = true
+        deskLocation.activate()
         if selectedProfile == nil {
             openSetup()
         } else {
-            statusMessage = "Paused • Command–H to listen"
+            statusMessage = "Paused • microphone off"
         }
     }
 
     func pauseListening() {
+        sharedCaptureLabel = nil
         pausedByUser = true
         disarmAllCaptureIntents()
         audio.stop()
@@ -267,8 +282,9 @@ final class AppModel: ObservableObject {
         statusMessage = "Setup required • calibrate the two desk zones"
     }
 
-    func selectProfile(_ id: UUID?) {
+    func selectProfile(_ id: UUID?, automatically: Bool = false) {
         guard guidedSection == nil else { return }
+        if !automatically && deskLocation.enabled { deskLocation.setEnabled(false) }
         isCreatingProfile = false
         selectedProfileID = id
         activeZoneClearTask?.cancel()
@@ -282,6 +298,50 @@ final class AppModel: ObservableObject {
             do { try await reconfigureListeningAudio(to: targetStrategy) }
             catch { errorMessage = error.localizedDescription }
         }
+    }
+
+    func startSharedSoundCapture(_ label: String) {
+        guard guidedSection == nil || guidedSection == .sounds else { return }
+        if sharedSoundDraft == nil { sharedSoundDraft = sharedRejections.samples }
+        sharedCaptureLabel = label
+        section = .sounds
+        pausedByUser = false
+        Task {
+            guard sharedSoundDraft != nil, sharedCaptureLabel != nil, section == .sounds else { return }
+            await activate()
+        }
+    }
+
+    func stopSharedSoundCapture() {
+        pauseListening()
+    }
+
+    func saveSharedSounds() {
+        guard let draft = sharedSoundDraft else { return }
+        pauseListening()
+        do {
+            guard let sharedRejectionStore else { throw HoloStorageError.unavailable("Shared sounds") }
+            let library = SharedRejectionLibrary(samples: draft)
+            try sharedRejectionStore.save(library)
+            sharedRejections = library
+            applySharedRejections()
+            sharedSoundDraft = nil
+            statusMessage = "Shared sounds saved for all compatible desks"
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    func cancelSharedSounds() {
+        pauseListening()
+        sharedSoundDraft = nil
+        statusMessage = "Shared sound changes cancelled"
+    }
+
+    func clearSharedSounds(label: String) {
+        guard guidedSection == nil else { return }
+        var samples = sharedRejections.samples
+        samples.removeAll { $0.negativeLabel == label }
+        sharedSoundDraft = samples
+        saveSharedSounds()
     }
 
     private func applySharedRejections() {
@@ -759,6 +819,13 @@ final class AppModel: ObservableObject {
             return
         }
 
+        if sharedSoundDraft != nil {
+            if let label = sharedCaptureLabel {
+                sharedSoundDraft?.append(LabeledTap(zone: nil, negativeLabel: label, feature: observation.feature))
+            }
+            return
+        }
+
         if var calibration = calibrationSession {
             handleCalibration(observation, session: &calibration)
             calibrationSession = calibration
@@ -829,7 +896,7 @@ final class AppModel: ObservableObject {
                     errorMessage = error.localizedDescription
                 }
             } else {
-                statusMessage = "\(zone.displayName) detected • actions paused outside Desk"
+                statusMessage = "\(zone.displayName) detected • actions paused outside Overview"
             }
         } else {
             statusMessage = "Rejected • \(decision.rejectionReason?.displayName ?? "low confidence")"

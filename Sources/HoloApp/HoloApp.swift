@@ -4,29 +4,14 @@ import SwiftUI
 
 @MainActor
 final class HoloAppDelegate: NSObject, NSApplicationDelegate {
-    private var hotKey: EventHotKeyRef?
-    private var eventHandler: EventHandlerRef?
     private weak var model: AppModel?
     private var sleepObserver: NSObjectProtocol?
 
     func configure(model: AppModel) {
         guard self.model == nil else { return }
         self.model = model
-        var event = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), { _, _, context in
-            guard let context else { return OSStatus(eventNotHandledErr) }
-            let delegate = Unmanaged<HoloAppDelegate>.fromOpaque(context).takeUnretainedValue()
-            MainActor.assumeIsolated {
-                delegate.model?.toggleBackgroundListening()
-            }
-            return noErr
-        }, 1, &event, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
-        let hotKeyID = EventHotKeyID(signature: 0x484F4C4F, id: 1)
-        let hotKeyStatus = RegisterEventHotKey(UInt32(kVK_ANSI_H), UInt32(cmdKey), hotKeyID,
-                                              GetApplicationEventTarget(), 0, &hotKey)
-        if handlerStatus != noErr || hotKeyStatus != noErr {
-            model.errorMessage = "Command–H could not be registered. Use the Holo menu bar icon to toggle listening."
-        }
+        model.shortcutController.onPress = { [weak model] in model?.toggleBackgroundListening() }
+        model.shortcutController.start()
         sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
         ) { [weak model] _ in
@@ -38,8 +23,8 @@ final class HoloAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         model?.pauseListening()
-        if let hotKey { UnregisterEventHotKey(hotKey) }
-        if let eventHandler { RemoveEventHandler(eventHandler) }
+        model?.deskLocation.stopRequests()
+        model?.shortcutController.stop()
         if let sleepObserver { NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver) }
     }
 }
@@ -52,14 +37,15 @@ struct HoloApp: App {
     var body: some Scene {
         Window("Holo", id: "main") {
             RootView(model: model)
-                .frame(minWidth: 1_020, minHeight: 680)
+                .frame(minWidth: 940, minHeight: 640)
                 .task {
                     appDelegate.configure(model: model)
                     await model.activateOnLaunch()
                 }
         }
-        .defaultSize(width: 1_180, height: 760)
+        .defaultSize(width: 1_040, height: 700)
         .commands {
+            HoloSettingsCommands(model: model)
             CommandMenu("Holo") {
                 Button(model.audio.isListening ? "Pause Listening" : "Resume Listening") {
                     model.togglePause()
@@ -97,11 +83,39 @@ private struct HoloMenu: View {
             }
         }
         .disabled(model.guidedSection != nil && !model.audio.isListening && !model.isStartingListening)
-        Text("Command–H toggles listening")
+        Text("\(model.shortcutController.shortcut.display) toggles listening")
+        Menu("Choose Desk") {
+            ForEach(model.profiles) { profile in
+                Button(profile.name) { model.selectProfile(profile.id) }
+            }
+        }
+        .disabled(model.guidedSection != nil)
+        Button("Settings…") {
+            model.section = .settings
+            openWindow(id: "main")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        .disabled(model.guidedSection != nil)
         if model.selectedProfile == nil { Text("Calibrate Left and Right to get started") }
         if let error = model.errorMessage { Text(error) }
         Divider()
         Button("Quit Holo") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
+    }
+}
+
+private struct HoloSettingsCommands: Commands {
+    @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") {
+                model.section = .settings
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            .keyboardShortcut(",", modifiers: .command)
+            .disabled(model.guidedSection != nil)
+        }
     }
 }

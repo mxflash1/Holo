@@ -17,7 +17,7 @@ struct LiveSurfaceView: View {
 
     private var liveDesk: some View {
         VStack(spacing: 20) {
-            Spacer(minLength: 20)
+            Spacer(minLength: 0)
 
             DeskMapView(
                 activeZone: model.activeZone,
@@ -26,12 +26,19 @@ struct LiveSurfaceView: View {
                 signalStrength: model.lastDecision?.signalStrength ?? model.audio.liveLevel,
                 isListening: model.audio.isListening
             )
-            .frame(maxWidth: 760, maxHeight: 490)
+            .frame(maxWidth: 680, maxHeight: 340)
             .padding(.horizontal, 36)
 
+            if let profile = model.selectedProfile {
+                HStack(spacing: 32) {
+                    ForEach(DeskZone.allCases) { zone in
+                        LabeledContent(zone.displayName, value: profile.action(for: zone).kind.displayName)
+                    }
+                }.font(.callout).frame(maxWidth: 680)
+            }
             resultStrip
 
-            Spacer(minLength: 28)
+            Spacer(minLength: 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 28)
